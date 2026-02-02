@@ -245,6 +245,10 @@ SendToPC() {
     Send("^c")
     Sleep(CfgGet("behavior", "debounceMs", 200))
 
+    ; 清空 Android 记事本内容（复制后立即清空）
+    Send("{Backspace}")
+    Sleep(30)
+
     ; 切回目标窗口并粘贴
     if targetWinId && WinExist("ahk_id " targetWinId) {
         WinActivate("ahk_id " targetWinId)
