@@ -39,6 +39,9 @@ global State := "IDLE"
 global LastWindowId := 0
 global IgnoreClip := false
 global LastClipContent := ""
+global LastTriggerTime := 0          ; 防抖：上次触发时间
+global TriggerDebounceMs := 500      ; 防抖间隔（毫秒）
+global TopMostTimer := 0             ; 置顶保持定时器
 
 ; =============================================================================
 ; 日志
@@ -119,11 +122,20 @@ RegisterHotkeys() {
 }
 
 ; =============================================================================
-; 触发处理（状态机核心）
+; 触发处理（状态机核心 + 防抖）
 ; =============================================================================
 
 HandleTrigger(*) {
-    global State
+    global State, LastTriggerTime, TriggerDebounceMs
+
+    ; 防抖检查：避免长按/快速点击重复触发
+    now := A_TickCount
+    if (now - LastTriggerTime) < TriggerDebounceMs {
+        LogWrite("[DEBOUNCE] Trigger ignored, interval: " (now - LastTriggerTime) "ms")
+        return
+    }
+    LastTriggerTime := now
+
     if State = "IDLE"
         ActivateInput()
     else
@@ -185,6 +197,26 @@ ActivateInput() {
     ; 切换状态
     State := "ACTIVE"
     LogWrite("[STATE] IDLE -> ACTIVE")
+
+    ; 启动置顶保持定时器（每 100ms 检查一次）
+    SetTimer(KeepTopMost, 100)
+}
+
+; =============================================================================
+; 置顶保持（定时器回调）
+; =============================================================================
+
+KeepTopMost() {
+    global State
+    if State != "ACTIVE" {
+        SetTimer(KeepTopMost, 0)  ; 停止定时器
+        return
+    }
+
+    title := CfgGet("device", "scrcpyTitle", "")
+    if WinExist(title) {
+        WinSetAlwaysOnTop(1, title)
+    }
 }
 
 ; =============================================================================
@@ -275,6 +307,9 @@ ReturnToOriginal(shouldPaste) {
     global State, LastWindowId
 
     title := CfgGet("device", "scrcpyTitle", "")
+
+    ; 停止置顶保持定时器
+    SetTimer(KeepTopMost, 0)
 
     ; 取消窗口置顶
     if WinExist(title)
