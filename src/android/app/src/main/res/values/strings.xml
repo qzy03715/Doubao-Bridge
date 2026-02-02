@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Doubao Input</string>
+    <string name="hint_input">Type or use voice input...</string>
+    <string name="button_send">Send</string>
+    <string name="button_clear">Clear</string>
+    <string name="button_edit">Edit</string>
+    <string name="toast_copied">Copied!</string>
+    <string name="dialog_edit_title">Edit Quick Phrases</string>
+    <string name="dialog_add_hint">Add new phrase</string>
+</resources>

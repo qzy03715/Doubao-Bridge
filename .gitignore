@@ -1,0 +1,32 @@
+# === Build outputs ===
+src/android/app/build/
+src/android/build/
+src/android/.gradle/
+*.apk
+
+# === Tools (large binaries, download separately) ===
+tools/adb/
+tools/jdk/
+tools/android-sdk/
+tools/gradle-*.zip
+
+# === Logs ===
+logs/
+
+# === IDE ===
+.idea/
+*.iml
+.vscode/
+
+# === Claude Code local config ===
+.claude/
+
+# === Temp files ===
+scripts/_temp_build.bat
+nul
+*.tmp
+*.bak
+
+# === OS ===
+.DS_Store
+Thumbs.db
