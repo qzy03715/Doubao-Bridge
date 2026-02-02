@@ -1,10 +1,20 @@
 @echo off
 setlocal
+
 set "PROJECT_DIR=%~dp0.."
+set "SCRCPY_DIR=%PROJECT_DIR%\tools\scrcpy"
 set "ADB=%PROJECT_DIR%\tools\adb\adb.exe"
 
 echo [Doubao Bridge] Starting scrcpy...
-cd /d "C:\Users\Derpy\Desktop\scrcpy-win64-v3.3.3"
+
+if not exist "%SCRCPY_DIR%\scrcpy.exe" (
+    echo [ERROR] scrcpy.exe not found in: %SCRCPY_DIR%
+    echo [ERROR] Please copy scrcpy files to tools\scrcpy\
+    pause
+    exit /b 1
+)
+
+cd /d "%SCRCPY_DIR%"
 start "" scrcpy.exe -K --shortcut-mod=ralt --max-fps 165 -b 20M -w
 echo [Doubao Bridge] scrcpy started.
 

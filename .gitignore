@@ -8,6 +8,7 @@ src/android/.gradle/
 tools/adb/
 tools/jdk/
 tools/android-sdk/
+tools/scrcpy/
 tools/gradle-*.zip
 
 # === Logs ===

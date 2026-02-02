@@ -11,12 +11,10 @@
     "debounceMs": 200
   },
   "window": {
-    "width": 400,
-    "height": 700,
-    "position": "center"
+    "position": "remember"
   },
   "path": {
-    "scrcpy": "C:\\Users\\Derpy\\Desktop\\scrcpy-win64-v3.3.3"
+    "scrcpy": "tools\\scrcpy"
   },
   "device": {
     "scrcpyTitle": "2505APX7BC"
