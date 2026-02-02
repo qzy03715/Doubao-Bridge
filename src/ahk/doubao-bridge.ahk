@@ -42,6 +42,9 @@ global LastClipContent := ""
 global LastTriggerTime := 0          ; 防抖：上次触发时间
 global TriggerDebounceMs := 500      ; 防抖间隔（毫秒）
 global TopMostTimer := 0             ; 置顶保持定时器
+global SavedWinX := -1               ; 记住的窗口位置 X
+global SavedWinY := -1               ; 记住的窗口位置 Y
+global HasSavedPosition := false     ; 是否已保存过位置
 
 ; =============================================================================
 ; 日志
@@ -170,12 +173,21 @@ ActivateInput() {
     ; 设置窗口置顶（防止被其他窗口遮挡）
     WinSetAlwaysOnTop(1, title)
 
-    ; 居中并调整大小
+    ; 调整窗口大小和位置
     w := CfgGet("window", "width", 400)
     h := CfgGet("window", "height", 700)
-    posX := (A_ScreenWidth - w) // 2
-    posY := (A_ScreenHeight - h) // 2
-    WinMove(posX, posY, w, h, title)
+
+    if HasSavedPosition {
+        ; 使用上次保存的位置
+        WinMove(SavedWinX, SavedWinY, w, h, title)
+        LogWrite("[WINDOW] Restored position: " SavedWinX ", " SavedWinY)
+    } else {
+        ; 首次激活：居中显示
+        posX := (A_ScreenWidth - w) // 2
+        posY := (A_ScreenHeight - h) // 2
+        WinMove(posX, posY, w, h, title)
+        LogWrite("[WINDOW] Centered: " posX ", " posY)
+    }
 
     if !WinWaitActive(title, , 1) {
         LogWrite("[ERROR] scrcpy activation timeout")
@@ -310,6 +322,17 @@ ReturnToOriginal(shouldPaste) {
 
     ; 停止置顶保持定时器
     SetTimer(KeepTopMost, 0)
+
+    ; 保存当前窗口位置（用户可能手动移动过）
+    if WinExist(title) {
+        try {
+            WinGetPos(&wx, &wy, , , title)
+            SavedWinX := wx
+            SavedWinY := wy
+            HasSavedPosition := true
+            LogWrite("[WINDOW] Saved position: " wx ", " wy)
+        }
+    }
 
     ; 取消窗口置顶
     if WinExist(title)
