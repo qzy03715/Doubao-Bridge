@@ -1,10 +1,8 @@
 @echo off
-chcp 65001 >nul
-echo [Doubao Bridge] 正在停止 AHK 脚本...
-
+echo [Doubao Bridge] Stopping AHK script...
 taskkill /IM AutoHotkey64.exe /F 2>nul
 if %errorlevel%==0 (
-    echo [Doubao Bridge] AHK 脚本已停止。
+    echo [Doubao Bridge] AHK script stopped.
 ) else (
-    echo [Doubao Bridge] AHK 脚本未在运行。
+    echo [Doubao Bridge] AHK script not running.
 )

@@ -1,20 +1,16 @@
 @echo off
-chcp 65001 >nul
 echo ============================================
-echo   Doubao Bridge - 一键停止
+echo   Doubao Bridge - Stop All
 echo ============================================
 echo.
-
-echo [1/2] 停止 AHK 脚本...
+echo [1/2] Stopping AHK script...
 call "%~dp0stop-ahk.bat"
 echo.
-
-echo [2/2] 停止 scrcpy...
+echo [2/2] Stopping scrcpy...
 call "%~dp0stop-scrcpy.bat"
 echo.
-
 echo ============================================
-echo   Doubao Bridge 已停止。
+echo   Doubao Bridge Stopped.
 echo ============================================
 echo.
 pause
