@@ -1,132 +1,312 @@
 ; =============================================================================
-; Project Doubao-Bridge - 主脚本
-; 功能：通过快捷键桥接 scrcpy 与 PC 软件，实现豆包输入法跨端输入
+; Doubao Bridge - Phase 3
+; 功能：单一快捷键 + 剪贴板监听自动上屏 + 窗口置顶
 ; AHK 版本：v2.0
 ; =============================================================================
 
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+#Include "lib\Jxon.ahk"
 
 ; =============================================================================
-; 配置
+; 配置加载
 ; =============================================================================
 
-class Config {
-    static SCRCPY_TITLE := "2505APX7BC"
-    static WIN_WIDTH := 400
-    static WIN_HEIGHT := 700
-    static CLIP_WAIT_MS := 300
-    static KEY_DELAY_MS := 50
-    static LOG_FILE := A_ScriptDir "\..\..\logs\doubao-bridge.log"
+global Cfg := LoadConfig()
+
+LoadConfig() {
+    configPath := A_ScriptDir "\config.json"
+    if !FileExist(configPath) {
+        MsgBox("config.json not found!`n" configPath, "Doubao Bridge", "Icon!")
+        ExitApp()
+    }
+    text := FileRead(configPath, "UTF-8")
+    return Jxon.Load(text)
+}
+
+CfgGet(section, key, default := "") {
+    global Cfg
+    try return Cfg[section][key]
+    catch
+        return default
 }
 
 ; =============================================================================
 ; 全局状态
 ; =============================================================================
 
+global State := "IDLE"
 global LastWindowId := 0
+global IgnoreClip := false
+global LastClipContent := ""
 
 ; =============================================================================
 ; 日志
 ; =============================================================================
 
 LogWrite(msg) {
+    logFile := A_ScriptDir "\..\..\logs\doubao-bridge.log"
     timestamp := FormatTime(, "yyyy-MM-dd HH:mm:ss")
-    line := "[" timestamp "] " msg "`n"
-    try FileAppend(line, Config.LOG_FILE)
+    try FileAppend("[" timestamp "] " msg "`n", logFile)
 }
 
 ; =============================================================================
-; 启动提示
+; 托盘菜单
 ; =============================================================================
 
-LogWrite("[INFO] Doubao Bridge 已启动")
-TrayTip("Doubao Bridge 已启动", "Alt+Space 唤起 | Ctrl+Enter 上屏", 1)
+SetupTray() {
+    A_TrayMenu.Delete()
+    A_TrayMenu.Add("Doubao Bridge v3", (*) => "")
+    A_TrayMenu.Disable("Doubao Bridge v3")
+    A_TrayMenu.Add()
+    A_TrayMenu.Add("Open Settings", OpenSettings)
+    A_TrayMenu.Add("Restart", (*) => Reload())
+    A_TrayMenu.Add()
+    A_TrayMenu.Add("Exit", (*) => ExitApp())
+    A_TrayMenu.Default := "Open Settings"
 
-; =============================================================================
-; 热键：Alt + Space - 唤起 scrcpy 窗口
-; =============================================================================
+    trigger := CfgGet("hotkey", "trigger", "MButton")
+    TrayTip("Doubao Bridge", trigger " to activate", 1)
+}
 
-!Space:: {
-    global LastWindowId
-
-    ; 记录当前窗口句柄
-    LastWindowId := WinGetID("A")
-    LogWrite("[INFO] 唤起 | 原窗口句柄: " LastWindowId)
-
-    ; 检查 scrcpy 是否运行
-    if !WinExist(Config.SCRCPY_TITLE) {
-        LogWrite("[ERROR] scrcpy 窗口未找到")
-        MsgBox("scrcpy 未运行，请先启动 scrcpy。", "Doubao Bridge", "Icon!")
-        return
-    }
-
-    ; 激活 scrcpy 窗口
-    WinActivate(Config.SCRCPY_TITLE)
-
-    ; 如果窗口处于最小化，先恢复
-    if WinGetMinMax(Config.SCRCPY_TITLE) = -1 {
-        WinRestore(Config.SCRCPY_TITLE)
-    }
-
-    ; 计算屏幕中心位置
-    posX := (A_ScreenWidth - Config.WIN_WIDTH) // 2
-    posY := (A_ScreenHeight - Config.WIN_HEIGHT) // 2
-
-    ; 移动并调整窗口大小
-    WinMove(posX, posY, Config.WIN_WIDTH, Config.WIN_HEIGHT, Config.SCRCPY_TITLE)
-
-    ; 等待窗口激活
-    if !WinWaitActive(Config.SCRCPY_TITLE, , 1) {
-        LogWrite("[ERROR] scrcpy 窗口激活超时")
-        return
-    }
-
-    ; 清空输入区：全选 + 删除
-    Sleep(100)
-    Send("^a")
-    Sleep(Config.KEY_DELAY_MS)
-    Send("{Backspace}")
-
-    LogWrite("[INFO] 唤起完成")
+OpenSettings(*) {
+    port := CfgGet("system", "webPort", 23715)
+    Run("http://localhost:" port)
 }
 
 ; =============================================================================
-; 条件热键：Ctrl + Enter - 上屏（仅 scrcpy 窗口激活时）
+; 快捷键解析（支持键盘和鼠标）
 ; =============================================================================
 
-#HotIf WinActive(Config.SCRCPY_TITLE)
-^Enter:: {
-    global LastWindowId
+ParseHotkey(friendly) {
+    result := friendly
+    ; 中文友好名称
+    result := StrReplace(result, "鼠标中键", "MButton")
+    result := StrReplace(result, "鼠标侧键1", "XButton1")
+    result := StrReplace(result, "鼠标侧键2", "XButton2")
+    result := StrReplace(result, "鼠标左键", "LButton")
+    result := StrReplace(result, "鼠标右键", "RButton")
+    ; 英文友好名称
+    result := StrReplace(result, "Middle Mouse", "MButton")
+    result := StrReplace(result, "Mouse4", "XButton1")
+    result := StrReplace(result, "Mouse5", "XButton2")
+    ; 修饰键
+    result := StrReplace(result, "Ctrl+", "^")
+    result := StrReplace(result, "Alt+", "!")
+    result := StrReplace(result, "Shift+", "+")
+    result := StrReplace(result, "Win+", "#")
+    return result
+}
 
-    LogWrite("[INFO] 上屏开始")
+; =============================================================================
+; 热键注册
+; =============================================================================
 
-    ; 全选
+RegisterHotkeys() {
+    trigger := ParseHotkey(CfgGet("hotkey", "trigger", "MButton"))
+    cancel := ParseHotkey(CfgGet("hotkey", "cancel", "Escape"))
+    title := CfgGet("device", "scrcpyTitle", "")
+
+    ; 全局触发键
+    Hotkey(trigger, HandleTrigger)
+
+    ; 取消键（仅 scrcpy 窗口激活时）
+    HotIf((*) => WinActive(title))
+    Hotkey(cancel, HandleCancel)
+    HotIf()
+
+    LogWrite("[INIT] Trigger: " trigger ", Cancel: " cancel)
+}
+
+; =============================================================================
+; 触发处理（状态机核心）
+; =============================================================================
+
+HandleTrigger(*) {
+    global State
+    if State = "IDLE"
+        ActivateInput()
+    else
+        ManualSend()
+}
+
+; =============================================================================
+; 激活输入模式 (IDLE → ACTIVE)
+; =============================================================================
+
+ActivateInput() {
+    global State, LastWindowId, LastClipContent
+
+    title := CfgGet("device", "scrcpyTitle", "")
+
+    ; 记录当前窗口
+    try LastWindowId := WinGetID("A")
+    LogWrite("[ACTIVATE] Original window: " LastWindowId)
+
+    ; 检查 scrcpy
+    if !WinExist(title) {
+        LogWrite("[ERROR] scrcpy not found: " title)
+        TrayTip("Doubao Bridge", "scrcpy not running!", 2)
+        return
+    }
+
+    ; 激活 scrcpy
+    WinActivate(title)
+    if WinGetMinMax(title) = -1
+        WinRestore(title)
+
+    ; 设置窗口置顶（防止被其他窗口遮挡）
+    WinSetAlwaysOnTop(1, title)
+
+    ; 居中并调整大小
+    w := CfgGet("window", "width", 400)
+    h := CfgGet("window", "height", 700)
+    posX := (A_ScreenWidth - w) // 2
+    posY := (A_ScreenHeight - h) // 2
+    WinMove(posX, posY, w, h, title)
+
+    if !WinWaitActive(title, , 1) {
+        LogWrite("[ERROR] scrcpy activation timeout")
+        WinSetAlwaysOnTop(0, title)
+        return
+    }
+
+    ; 清空输入区
+    if CfgGet("behavior", "clearOnActivate", true) {
+        Sleep(100)
+        Send("^a")
+        Sleep(50)
+        Send("{Backspace}")
+    }
+
+    ; 记录当前剪贴板内容（用于变化检测）
+    LastClipContent := A_Clipboard
+
+    ; 切换状态
+    State := "ACTIVE"
+    LogWrite("[STATE] IDLE -> ACTIVE")
+}
+
+; =============================================================================
+; 手动上屏 (ACTIVE 时再次按触发键)
+; =============================================================================
+
+ManualSend() {
+    global State, IgnoreClip
+
+    LogWrite("[SEND] Manual send triggered")
+
+    ; 忽略接下来的剪贴板变化（避免重复触发）
+    IgnoreClip := true
+
+    ; 复制内容
     Send("^a")
-    Sleep(Config.KEY_DELAY_MS)
-
-    ; 复制
+    Sleep(50)
     Send("^c")
-    Sleep(Config.CLIP_WAIT_MS)
+    Sleep(CfgGet("behavior", "debounceMs", 200))
+
+    ; 返回原窗口并粘贴
+    ReturnToOriginal(true)
+
+    IgnoreClip := false
+}
+
+; =============================================================================
+; 取消输入 (Esc)
+; =============================================================================
+
+HandleCancel(*) {
+    global State
+    if State != "ACTIVE"
+        return
+
+    LogWrite("[CANCEL] User cancelled")
+    ReturnToOriginal(false)
+}
+
+; =============================================================================
+; 剪贴板监听
+; =============================================================================
+
+ClipChanged(dataType) {
+    global State, IgnoreClip, LastClipContent
+
+    ; 仅 ACTIVE 状态响应
+    if State != "ACTIVE"
+        return
+
+    ; 忽略自己的操作
+    if IgnoreClip
+        return
+
+    ; 仅处理文本
+    if dataType != 1
+        return
+
+    ; 内容相同则忽略
+    if A_Clipboard = LastClipContent
+        return
+
+    ; 空内容忽略
+    if A_Clipboard = ""
+        return
+
+    LogWrite("[CLIP] Content changed, length: " StrLen(A_Clipboard))
+
+    ; 防抖：延迟执行
+    debounce := CfgGet("behavior", "debounceMs", 200)
+    SetTimer(DoAutoSend, -debounce)
+}
+
+DoAutoSend() {
+    global State
+    if State != "ACTIVE"
+        return
+
+    LogWrite("[SEND] Auto send triggered")
+    ReturnToOriginal(true)
+}
+
+; =============================================================================
+; 返回原窗口
+; =============================================================================
+
+ReturnToOriginal(shouldPaste) {
+    global State, LastWindowId
+
+    title := CfgGet("device", "scrcpyTitle", "")
+
+    ; 取消窗口置顶
+    if WinExist(title)
+        WinSetAlwaysOnTop(0, title)
 
     ; 最小化 scrcpy
-    WinMinimize(Config.SCRCPY_TITLE)
+    if WinExist(title)
+        WinMinimize(title)
 
-    ; 还原焦点到原窗口
+    ; 激活原窗口
     if LastWindowId && WinExist("ahk_id " LastWindowId) {
         WinActivate("ahk_id " LastWindowId)
-        if !WinWaitActive("ahk_id " LastWindowId, , 1) {
-            LogWrite("[WARN] 原窗口激活超时，尝试粘贴到当前窗口")
-        }
-    } else {
-        LogWrite("[WARN] 原窗口不存在，粘贴到当前活动窗口")
+        WinWaitActive("ahk_id " LastWindowId, , 1)
     }
 
-    Sleep(100)
-
     ; 粘贴
-    Send("^v")
+    if shouldPaste && CfgGet("behavior", "autoPaste", true) {
+        Sleep(100)
+        Send("^v")
+        LogWrite("[PASTE] Length: " StrLen(A_Clipboard))
+    }
 
-    LogWrite("[INFO] 上屏完成 | 内容长度: " StrLen(A_Clipboard))
+    ; 重置状态
+    State := "IDLE"
+    LogWrite("[STATE] ACTIVE -> IDLE")
 }
-#HotIf
+
+; =============================================================================
+; 启动
+; =============================================================================
+
+SetupTray()
+RegisterHotkeys()
+OnClipboardChange(ClipChanged)
+LogWrite("[INIT] Doubao Bridge Phase 3 started")

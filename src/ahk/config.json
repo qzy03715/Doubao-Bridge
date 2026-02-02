@@ -1,0 +1,29 @@
+{
+  "hotkey": {
+    "trigger": "MButton",
+    "cancel": "Escape"
+  },
+  "behavior": {
+    "autoSend": true,
+    "autoPaste": true,
+    "clearOnActivate": true,
+    "timeoutSeconds": 0,
+    "debounceMs": 200
+  },
+  "window": {
+    "width": 400,
+    "height": 700,
+    "position": "center"
+  },
+  "path": {
+    "scrcpy": "C:\\Users\\Derpy\\Desktop\\scrcpy-win64-v3.3.3"
+  },
+  "device": {
+    "scrcpyTitle": "2505APX7BC"
+  },
+  "system": {
+    "autoStart": false,
+    "minimizeToTray": true,
+    "webPort": 23715
+  }
+}
