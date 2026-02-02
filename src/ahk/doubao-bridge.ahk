@@ -1,6 +1,6 @@
 ; =============================================================================
-; Doubao Bridge - Phase 3 (简化版)
-; 功能：一键上屏，投屏窗口保持显示
+; Doubao Bridge - Phase 3
+; 功能：智能识别 - 呼出/上屏 二合一
 ; AHK 版本：v2.0
 ; =============================================================================
 
@@ -35,8 +35,11 @@ CfgGet(section, key, default := "") {
 ; 全局状态
 ; =============================================================================
 
-global LastTriggerTime := 0          ; 防抖：上次触发时间
-global TriggerDebounceMs := 300      ; 防抖间隔（毫秒）
+global LastTriggerTime := 0
+global TriggerDebounceMs := 300
+global SavedWinX := -1
+global SavedWinY := -1
+global HasSavedPosition := false
 
 ; =============================================================================
 ; 日志
@@ -64,7 +67,7 @@ SetupTray() {
     A_TrayMenu.Default := "Open Settings"
 
     trigger := CfgGet("hotkey", "trigger", "MButton")
-    TrayTip("Doubao Bridge", trigger " = 一键上屏", 1)
+    TrayTip("Doubao Bridge", trigger " = 呼出/上屏", 1)
 }
 
 OpenSettings(*) {
@@ -73,22 +76,19 @@ OpenSettings(*) {
 }
 
 ; =============================================================================
-; 快捷键解析（支持键盘和鼠标）
+; 快捷键解析
 ; =============================================================================
 
 ParseHotkey(friendly) {
     result := friendly
-    ; 中文友好名称
     result := StrReplace(result, "鼠标中键", "MButton")
     result := StrReplace(result, "鼠标侧键1", "XButton1")
     result := StrReplace(result, "鼠标侧键2", "XButton2")
     result := StrReplace(result, "鼠标左键", "LButton")
     result := StrReplace(result, "鼠标右键", "RButton")
-    ; 英文友好名称
     result := StrReplace(result, "Middle Mouse", "MButton")
     result := StrReplace(result, "Mouse4", "XButton1")
     result := StrReplace(result, "Mouse5", "XButton2")
-    ; 修饰键
     result := StrReplace(result, "Ctrl+", "^")
     result := StrReplace(result, "Alt+", "!")
     result := StrReplace(result, "Shift+", "+")
@@ -107,16 +107,15 @@ RegisterHotkeys() {
 }
 
 ; =============================================================================
-; 一键上屏（核心逻辑）
+; 智能触发：判断是呼出还是上屏
 ; =============================================================================
 
 HandleTrigger(*) {
     global LastTriggerTime, TriggerDebounceMs
 
-    ; 防抖检查
+    ; 防抖
     now := A_TickCount
     if (now - LastTriggerTime) < TriggerDebounceMs {
-        LogWrite("[DEBOUNCE] Ignored, interval: " (now - LastTriggerTime) "ms")
         return
     }
     LastTriggerTime := now
@@ -125,51 +124,139 @@ HandleTrigger(*) {
 
     ; 检查 scrcpy 是否运行
     if !WinExist(title) {
-        LogWrite("[ERROR] scrcpy not found: " title)
+        LogWrite("[ERROR] scrcpy not found")
         TrayTip("Doubao Bridge", "scrcpy not running!", 2)
         return
     }
 
-    ; 记录当前窗口（PC 上用户点击的目标窗口）
-    targetWinId := 0
-    try targetWinId := WinGetID("A")
-    LogWrite("[SEND] Target window: " targetWinId)
+    ; 判断 scrcpy 窗口状态
+    isMinimized := (WinGetMinMax(title) = -1)
+    isVisible := IsWindowVisible(title)
 
-    ; 如果当前已经在 scrcpy 窗口，目标就是上一个活动窗口
-    ; 这种情况下直接从 scrcpy 复制并粘贴可能有问题
-    ; 暂时不处理这个边界情况
+    if isMinimized || !isVisible {
+        ; 窗口最小化或不可见 → 呼出窗口
+        LogWrite("[ACTION] Show window")
+        ShowScrcpyWindow()
+    } else {
+        ; 窗口已显示 → 上屏
+        LogWrite("[ACTION] Send to PC")
+        SendToPC()
+    }
+}
 
-    ; 激活 scrcpy 窗口
+; =============================================================================
+; 检查窗口是否在前台可见
+; =============================================================================
+
+IsWindowVisible(title) {
+    if !WinExist(title)
+        return false
+
+    ; 检查是否最小化
+    if WinGetMinMax(title) = -1
+        return false
+
+    ; 检查窗口是否被完全遮挡（简单判断：是否是活动窗口或 scrcpy 置顶）
+    ; 这里简化处理：只要不是最小化就认为可见
+    return true
+}
+
+; =============================================================================
+; 呼出 scrcpy 窗口
+; =============================================================================
+
+ShowScrcpyWindow() {
+    global SavedWinX, SavedWinY, HasSavedPosition
+
+    title := CfgGet("device", "scrcpyTitle", "")
+    w := CfgGet("window", "width", 400)
+    h := CfgGet("window", "height", 700)
+
+    ; 恢复窗口（如果最小化）
+    if WinGetMinMax(title) = -1
+        WinRestore(title)
+
+    ; 设置位置
+    if HasSavedPosition {
+        WinMove(SavedWinX, SavedWinY, w, h, title)
+        LogWrite("[WINDOW] Restored: " SavedWinX ", " SavedWinY)
+    } else {
+        posX := (A_ScreenWidth - w) // 2
+        posY := (A_ScreenHeight - h) // 2
+        WinMove(posX, posY, w, h, title)
+        LogWrite("[WINDOW] Centered")
+    }
+
+    ; 置顶显示
+    WinSetAlwaysOnTop(1, title)
+
+    ; 激活窗口
     WinActivate(title)
-    if !WinWaitActive(title, , 1) {
-        LogWrite("[ERROR] scrcpy activation timeout")
+}
+
+; =============================================================================
+; 上屏：复制 Android 内容 → 粘贴到 PC
+; =============================================================================
+
+SendToPC() {
+    global SavedWinX, SavedWinY, HasSavedPosition
+
+    title := CfgGet("device", "scrcpyTitle", "")
+
+    ; 保存当前窗口位置（用户可能移动过）
+    try {
+        WinGetPos(&wx, &wy, , , title)
+        SavedWinX := wx
+        SavedWinY := wy
+        HasSavedPosition := true
+    }
+
+    ; 记录当前活动窗口（目标窗口）
+    ; 如果当前活动窗口就是 scrcpy，需要找到之前的窗口
+    activeTitle := ""
+    try activeTitle := WinGetTitle("A")
+
+    targetWinId := 0
+    if InStr(activeTitle, title) {
+        ; 当前在 scrcpy 窗口，无法直接获取目标
+        ; 这种情况下用户应该先点击 PC 目标位置
+        LogWrite("[WARN] Currently in scrcpy, no target window")
+        TrayTip("Doubao Bridge", "请先点击 PC 目标位置", 2)
         return
     }
 
-    ; 全选 + 复制（从 Android 记事本）
-    Sleep(50)
-    Send("^a")
-    Sleep(50)
-    Send("^c")
+    try targetWinId := WinGetID("A")
+    LogWrite("[SEND] Target: " targetWinId " (" activeTitle ")")
 
-    ; 等待剪贴板同步（scrcpy 会自动同步 Android 剪贴板到 PC）
-    Sleep(CfgGet("behavior", "debounceMs", 300))
+    ; 确保 scrcpy 置顶
+    WinSetAlwaysOnTop(1, title)
 
-    ; 回到目标窗口
-    if targetWinId && WinExist("ahk_id " targetWinId) {
-        WinActivate("ahk_id " targetWinId)
-        if !WinWaitActive("ahk_id " targetWinId, , 1) {
-            LogWrite("[WARN] Target window activation timeout")
-        }
+    ; 激活 scrcpy 并复制
+    WinActivate(title)
+    if !WinWaitActive(title, , 0.5) {
+        LogWrite("[ERROR] scrcpy activation failed")
+        return
     }
 
-    ; 粘贴
-    Sleep(50)
-    Send("^v")
-    LogWrite("[SEND] Pasted, length: " StrLen(A_Clipboard))
+    ; 全选 + 复制
+    Sleep(30)
+    Send("^a")
+    Sleep(30)
+    Send("^c")
+    Sleep(CfgGet("behavior", "debounceMs", 200))
 
-    ; 注意：不最小化 scrcpy，保持显示
-    ; 用户可以继续在 Android 输入，然后再按中键上屏
+    ; 切回目标窗口并粘贴
+    if targetWinId && WinExist("ahk_id " targetWinId) {
+        WinActivate("ahk_id " targetWinId)
+        WinWaitActive("ahk_id " targetWinId, , 0.5)
+        Sleep(30)
+        Send("^v")
+        LogWrite("[SEND] Pasted to target")
+    }
+
+    ; 保持 scrcpy 置顶显示（不最小化，不激活）
+    ; scrcpy 窗口保持在前台但焦点在目标窗口
+    WinSetAlwaysOnTop(1, title)
 }
 
 ; =============================================================================
@@ -178,4 +265,4 @@ HandleTrigger(*) {
 
 SetupTray()
 RegisterHotkeys()
-LogWrite("[INIT] Doubao Bridge Phase 3 started (Simple Mode)")
+LogWrite("[INIT] Doubao Bridge Phase 3 started")
