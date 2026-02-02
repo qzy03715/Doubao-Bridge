@@ -169,29 +169,28 @@ ShowScrcpyWindow() {
     global SavedWinX, SavedWinY, HasSavedPosition
 
     title := CfgGet("device", "scrcpyTitle", "")
-    w := CfgGet("window", "width", 400)
-    h := CfgGet("window", "height", 700)
 
     ; 恢复窗口（如果最小化）
     if WinGetMinMax(title) = -1
         WinRestore(title)
 
-    ; 设置位置
+    ; 只在有保存位置时恢复位置，不强制设置大小（避免黑边）
     if HasSavedPosition {
-        WinMove(SavedWinX, SavedWinY, w, h, title)
-        LogWrite("[WINDOW] Restored: " SavedWinX ", " SavedWinY)
-    } else {
-        posX := (A_ScreenWidth - w) // 2
-        posY := (A_ScreenHeight - h) // 2
-        WinMove(posX, posY, w, h, title)
-        LogWrite("[WINDOW] Centered")
+        ; 获取当前窗口大小，只改变位置
+        try {
+            WinGetPos(, , &w, &h, title)
+            WinMove(SavedWinX, SavedWinY, w, h, title)
+            LogWrite("[WINDOW] Restored position: " SavedWinX ", " SavedWinY)
+        }
     }
+    ; 首次不设置位置，让 scrcpy 自己决定
 
     ; 置顶显示
     WinSetAlwaysOnTop(1, title)
 
-    ; 激活窗口
+    ; 激活窗口（确保获得键盘焦点）
     WinActivate(title)
+    WinWaitActive(title, , 1)
 }
 
 ; =============================================================================
