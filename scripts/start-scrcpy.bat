@@ -15,7 +15,7 @@ if not exist "%SCRCPY_DIR%\scrcpy.exe" (
 )
 
 cd /d "%SCRCPY_DIR%"
-start "" scrcpy.exe -K --shortcut-mod=ralt --max-fps 165 -b 20M -w
+cscript //nologo scrcpy-noconsole.vbs -K --shortcut-mod=ralt --max-fps 165 -b 20M -w --window-height 720
 echo [Doubao Bridge] scrcpy started.
 
 echo [Doubao Bridge] Launching Doubao Input app...
