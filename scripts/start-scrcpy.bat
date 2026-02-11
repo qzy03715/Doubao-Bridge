@@ -4,6 +4,7 @@ setlocal
 set "PROJECT_DIR=%~dp0.."
 set "SCRCPY_DIR=%PROJECT_DIR%\tools\scrcpy"
 set "ADB=%PROJECT_DIR%\tools\adb\adb.exe"
+set "CONFIG_FILE=%PROJECT_DIR%\src\ahk\config.json"
 
 echo [Doubao Bridge] Starting scrcpy...
 
@@ -12,6 +13,20 @@ if not exist "%SCRCPY_DIR%\scrcpy.exe" (
     echo [ERROR] Please copy scrcpy files to tools\scrcpy\
     pause
     exit /b 1
+)
+
+:: Read device.ip from config.json
+set "DEVICE_IP="
+for /f "delims=" %%i in ('powershell -NoProfile -Command "(Get-Content '%CONFIG_FILE%' | ConvertFrom-Json).device.ip"') do set "DEVICE_IP=%%i"
+
+:: If IP is configured, connect via WiFi
+if not "%DEVICE_IP%"=="" (
+    echo [Doubao Bridge] WiFi mode - connecting to %DEVICE_IP%:5555...
+    "%ADB%" connect %DEVICE_IP%:5555
+    timeout /t 2 /nobreak >nul
+    echo [Doubao Bridge] WiFi connection established.
+) else (
+    echo [Doubao Bridge] USB mode - using wired connection.
 )
 
 cd /d "%SCRCPY_DIR%"
