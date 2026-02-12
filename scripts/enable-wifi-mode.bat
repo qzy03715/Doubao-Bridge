@@ -25,19 +25,8 @@ if errorlevel 1 (
 echo [OK] USB device detected.
 echo.
 
-:: Step 2: Enable TCP/IP mode
-echo [2/4] Enabling wireless adb mode (tcpip 5555)...
-"%ADB%" tcpip 5555 >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Failed to enable tcpip mode!
-    pause
-    exit /b 1
-)
-echo [OK] Wireless adb mode enabled on port 5555.
-echo.
-
-:: Step 3: Get phone WiFi IP (use temp file to avoid pipe quoting issues)
-echo [3/4] Detecting phone WiFi IP address...
+:: Step 2: Get phone WiFi IP (BEFORE tcpip, while USB is stable)
+echo [2/4] Detecting phone WiFi IP address...
 set "PHONE_IP="
 set "TMPFILE=%TEMP%\doubao_wifi_ip.tmp"
 "%ADB%" shell ip -f inet addr show wlan0 > "!TMPFILE!" 2>nul
@@ -67,6 +56,17 @@ if not defined PHONE_IP (
     exit /b 1
 )
 echo [OK] Phone WiFi IP: !PHONE_IP!
+echo.
+
+:: Step 3: Enable TCP/IP mode (after IP is obtained)
+echo [3/4] Enabling wireless adb mode (tcpip 5555)...
+"%ADB%" tcpip 5555 >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Failed to enable tcpip mode!
+    pause
+    exit /b 1
+)
+echo [OK] Wireless adb mode enabled on port 5555.
 echo.
 
 :: Step 4: Update config.json (use regex replace to preserve formatting, no BOM)
