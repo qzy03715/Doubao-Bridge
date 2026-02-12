@@ -87,7 +87,6 @@ echo ============================================
 echo.
 echo   Phone IP : !PHONE_IP!
 echo   ADB Port : 5555
-echo   Title    : !PHONE_IP!:5555
 echo.
 echo   You can now unplug the USB cable.
 echo   Use start-wifi.bat to launch Doubao Bridge.

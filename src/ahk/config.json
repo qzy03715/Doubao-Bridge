@@ -17,7 +17,7 @@
     "scrcpy": "tools\\scrcpy"
   },
   "device": {
-    "scrcpyTitle": "192.168.0.87:5555",
+    "scrcpyTitle": "2505APX7BC",
     "ip": "192.168.0.87"
   },
   "system": {
