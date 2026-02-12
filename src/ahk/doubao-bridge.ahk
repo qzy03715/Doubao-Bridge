@@ -237,12 +237,18 @@ SendToPC() {
         return
     }
 
-    ; 全选 + 复制
+    ; 全选 + 复制（先清空剪贴板，用 ClipWait 等待同步完成，适配 WiFi 延迟）
     Sleep(30)
     Send("^a")
-    Sleep(30)
+    Sleep(50)
+    A_Clipboard := ""
     Send("^c")
-    Sleep(CfgGet("behavior", "debounceMs", 200))
+    if !ClipWait(3) {
+        LogWrite("[ERROR] Clipboard sync timeout (3s)")
+        TrayTip("Doubao Bridge", "剪贴板同步超时，请重试", 2)
+        return
+    }
+    LogWrite("[SEND] Clipboard received: " StrLen(A_Clipboard) " chars")
 
     ; 清空 Android 记事本内容（复制后立即清空）
     Send("{Backspace}")
