@@ -36,13 +36,13 @@ if errorlevel 1 (
 echo [OK] Wireless adb mode enabled on port 5555.
 echo.
 
-:: Step 3: Get phone WiFi IP
+:: Step 3: Get phone WiFi IP (use temp file to avoid pipe quoting issues)
 echo [3/4] Detecting phone WiFi IP address...
 set "PHONE_IP="
-for /f "tokens=*" %%i in ('"%ADB%" shell ip -f inet addr show wlan0 2^>nul ^| findstr "inet "') do (
-    set "LINE=%%i"
-)
-if not defined LINE (
+set "TMPFILE=%TEMP%\doubao_wifi_ip.tmp"
+"%ADB%" shell ip -f inet addr show wlan0 > "!TMPFILE!" 2>nul
+
+if not exist "!TMPFILE!" (
     echo [ERROR] Could not detect WiFi IP!
     echo [ERROR] Make sure your phone is connected to WiFi.
     pause
@@ -50,7 +50,15 @@ if not defined LINE (
 )
 
 :: Parse IP from "inet 192.168.x.x/24 ..." format
-for /f "tokens=2 delims= " %%a in ("!LINE!") do set "IP_WITH_MASK=%%a"
+for /f "tokens=2" %%a in ('findstr "inet " "!TMPFILE!"') do set "IP_WITH_MASK=%%a"
+del "!TMPFILE!" 2>nul
+
+if not defined IP_WITH_MASK (
+    echo [ERROR] Could not detect WiFi IP!
+    echo [ERROR] Make sure your phone is connected to WiFi.
+    pause
+    exit /b 1
+)
 for /f "tokens=1 delims=/" %%a in ("!IP_WITH_MASK!") do set "PHONE_IP=%%a"
 
 if not defined PHONE_IP (
@@ -61,13 +69,13 @@ if not defined PHONE_IP (
 echo [OK] Phone WiFi IP: !PHONE_IP!
 echo.
 
-:: Step 4: Update config.json
+:: Step 4: Update config.json (use regex replace to preserve formatting, no BOM)
 echo [4/4] Updating config.json...
 powershell -NoProfile -Command ^
-    "$cfg = Get-Content '%CONFIG_FILE%' -Raw | ConvertFrom-Json; ^
-     $cfg.device.ip = '%PHONE_IP%'; ^
-     $cfg.device.scrcpyTitle = '%PHONE_IP%:5555'; ^
-     $cfg | ConvertTo-Json -Depth 10 | Set-Content '%CONFIG_FILE%' -Encoding UTF8"
+    "$c = Get-Content '%CONFIG_FILE%' -Raw -Encoding UTF8; ^
+     $c = $c -replace '\"scrcpyTitle\":\s*\"[^\"]*\"', '\"scrcpyTitle\": \"%PHONE_IP%:5555\"'; ^
+     $c = $c -replace '\"ip\":\s*\"[^\"]*\"', '\"ip\": \"%PHONE_IP%\"'; ^
+     [System.IO.File]::WriteAllText('%CONFIG_FILE%', $c, (New-Object System.Text.UTF8Encoding $false))"
 
 if errorlevel 1 (
     echo [ERROR] Failed to update config.json!
