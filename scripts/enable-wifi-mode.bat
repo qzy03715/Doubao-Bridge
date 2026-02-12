@@ -69,13 +69,9 @@ if errorlevel 1 (
 echo [OK] Wireless adb mode enabled on port 5555.
 echo.
 
-:: Step 4: Update config.json (use regex replace to preserve formatting, no BOM)
+:: Step 4: Update config.json
 echo [4/4] Updating config.json...
-powershell -NoProfile -Command ^
-    "$c = Get-Content '%CONFIG_FILE%' -Raw -Encoding UTF8; ^
-     $c = $c -replace '\"scrcpyTitle\":\s*\"[^\"]*\"', '\"scrcpyTitle\": \"%PHONE_IP%:5555\"'; ^
-     $c = $c -replace '\"ip\":\s*\"[^\"]*\"', '\"ip\": \"%PHONE_IP%\"'; ^
-     [System.IO.File]::WriteAllText('%CONFIG_FILE%', $c, (New-Object System.Text.UTF8Encoding $false))"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0update-wifi-config.ps1" -ConfigFile "!CONFIG_FILE!" -PhoneIP "!PHONE_IP!"
 
 if errorlevel 1 (
     echo [ERROR] Failed to update config.json!
